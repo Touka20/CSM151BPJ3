@@ -35,10 +35,7 @@ void Core::issue() {
   // TODO:
   if (RS_.full())
     return;
-  auto fu_type = instr->getFUType();
-  // check if there is a free fu
-  if(FUs_.at((int)fu_type)->busy())
-    return;
+
   if (ROB_.full())
     return;
 
