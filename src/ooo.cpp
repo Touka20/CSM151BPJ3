@@ -35,6 +35,7 @@ void Core::issue() {
   // TODO:
   if (RS_.full())
     return;
+  // check functional unit is busy
 
   if (ROB_.full())
     return;
@@ -42,7 +43,7 @@ void Core::issue() {
 
   uint32_t rs1_data = 0; // rs1 data obtained from register file or ROB
   uint32_t rs2_data = 0;  // rs2 data obtained from register file or ROB
-  int rs1_rsid = -1;      // reservation station id for rs1 (-1 indicates data in already available)
+  int rs1_rsid = -1;      // reservation station id for rs1 (-1 indicates data is already available)
   int rs2_rsid = -1;      // reservation station id for rs2 (-1 indicates data is already available)
 
   auto rs1 = instr->getRs1();
@@ -58,18 +59,22 @@ void Core::issue() {
   if (exe_flags.use_rs1) {
     if(RAT_.exists(rs1)){
       auto rob_id = RAT_.get(rs1);
+      
       auto rob_entry = ROB_.get_entry(rob_id);
-      if(rob_entry.ready){
+      if(rob_entry.ready&&rob_entry.valid){
         rs1_data = rob_entry.result;
       }
       else{
-        rs1_rsid = rob_id;
+        rs1_rsid = RST_[rob_id];
       }
+      DT(2, "rs1_ROB" << RAT_.get(rs1) << " rs1_data" << rs1_data << " rs1_rsid" << rs1_rsid);
     }
     else{
       rs1_data = reg_file_.at(rs1);
     }
   }
+  
+
 
   // get rs2 data
   // check the RAT if value is in the registe file
@@ -82,11 +87,11 @@ void Core::issue() {
     if(RAT_.exists(rs2)){
       auto rob_id = RAT_.get(rs2);
       auto rob_entry = ROB_.get_entry(rob_id);
-      if(rob_entry.ready){
+      if(rob_entry.ready&&rob_entry.valid){
         rs2_data = rob_entry.result;
       }
       else{
-        rs2_rsid = rob_id;
+        rs2_rsid = RST_[rob_id];
       }
     }
     else{
@@ -110,11 +115,13 @@ void Core::issue() {
 
   // update RST mapping
   // TODO:
-  RST_[rs1_rsid]  = rs_index;
-  RST_[rs2_rsid]  = rs_index;
+  RST_[rob_index] = rs_index;
+
+  
 
 
   DT(2, "Issue: " << *instr);
+  DT(2,"NOW "<< rob_index << " issued to " << instr->getRd());
 
   // pop issue queue
   issue_queue_->pop();
@@ -134,9 +141,10 @@ void Core::execute() {
   for (auto fu : FUs_) {
     // TODO:
     if(fu->done()){
-      auto output = fu->get_output();
-      CDB_.push(output.result, output.rob_index, output.rs_index);
+      auto result = fu->get_output();
+      CDB_.push(result.result, result.rob_index, result.rs_index);
       fu->clear();
+      break;
     }
 
   }
@@ -150,10 +158,11 @@ void Core::execute() {
     auto& entry = RS_.get_entry(rs_index);
     // TODO:
     if(entry.valid && !entry.running && entry.operands_ready() && !RS_.locked(rs_index)){
-      auto instr = entry.instr;
-      auto fu_type = instr->getFUType();
-      auto fu = FUs_.at((int)fu_type);
-      fu->issue(instr, entry.rob_index, rs_index, entry.rs1_data, entry.rs2_data);
+      auto fu = FUs_.at((int)entry.instr->getFUType());
+      if(fu->busy()){
+        continue;
+      }
+      fu->issue(entry.instr, entry.rob_index, rs_index,entry.rs1_data , entry.rs2_data);
       entry.running = true;
     }
   }
@@ -211,8 +220,11 @@ void Core::commit() {
     // TODO:
     if(exe_flags.use_rd){
       reg_file_.at(instr->getRd()) = rob_head.result;
-      if(RAT_.get(instr->getRd()) == head_index){
-        RAT_.clear(instr->getRd());
+      if(RAT_.exists(instr->getRd())){
+        auto rob_id = RAT_.get(instr->getRd());
+        if(rob_id == head_index){
+          RAT_.clear(instr->getRd());
+        }
       }
     }
 
