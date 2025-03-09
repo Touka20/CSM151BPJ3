@@ -34,7 +34,7 @@ Core::Core(const SimContext& ctx, uint32_t core_id, ProcessorImpl* processor)
     , ROB_(ROB_SIZE/*TODO: use size info from config.h*/)
     , RAT_(NUM_REGS/*TODO: use size info from config.h*/)
     , RS_(NUM_RSS/*TODO: use size info from config.h*/)
-    , RST_(NUM_RSS/*TODO: use size info from config.h*/)
+    , RST_(ROB_SIZE/*TODO: use size info from config.h*/)
     , FUs_(NUM_FUS/*TODO: use size info from config.h*/)
 {
   // create functional units
